@@ -6,7 +6,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::auth::Principal;
+use crate::auth::{api_keys, Principal};
 use crate::error::{Error, Result};
 
 pub async fn delete(
@@ -18,10 +18,7 @@ pub async fn delete(
         return Err(Error::Forbidden);
     }
 
-    sqlx::query("DELETE FROM api_keys WHERE id = $1")
-        .bind(id)
-        .execute(&state.db)
-        .await?;
+    api_keys::delete(&state.db, id).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

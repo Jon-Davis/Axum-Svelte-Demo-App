@@ -1,3 +1,17 @@
+//! Authentication and authorization. Submodules hold the persistence/service
+//! logic the route handlers call into; this root keeps the cross-cutting pieces:
+//! the request `Principal`, the secure-cookie builder, and the `require_login`
+//! middleware that every request passes through.
+
+pub mod api_keys;
+pub mod oidc;
+pub mod sessions;
+pub mod users;
+
+// Persistence layer for this module: every `sqlx` query lives here, the service
+// modules above call into it. Private — callers go through the services.
+mod db;
+
 use axum::{
     extract::{Request, State},
     http::{header::AUTHORIZATION, StatusCode},
@@ -5,7 +19,6 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use axum_extra::extract::cookie::{Cookie, PrivateCookieJar, SameSite};
-use sha2::{Digest, Sha256};
 
 use crate::AppState;
 
@@ -29,16 +42,6 @@ impl Principal {
     pub fn is_admin(&self) -> bool {
         self.role == "admin"
     }
-}
-
-/// OIDC flow state stashed in an encrypted cookie between `/auth/login` and
-/// `/auth/callback`. Shared here so the serialized shape can't drift between
-/// the two handlers that read and write it.
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct OidcFlowState {
-    pub csrf_token: String,
-    pub nonce: String,
-    pub pkce_verifier: String,
 }
 
 /// Builds a cookie with the security attributes every cookie in this app needs:
@@ -69,38 +72,21 @@ pub async fn require_login(
         return next.run(request).await;
     }
 
+    let is_api = path.starts_with("/api/");
+
     // For API routes check the Authorization header first.
     // If a Bearer token is present we validate it and make a decision immediately —
-    // we don't fall through to the session check, so a bad/unknown token always gets a 401.
-    if path.starts_with("/api/") {
+    // we don't fall through to the session check, so a bad/unknown token always gets
+    // a 401 (a DB error is treated the same way, never a fall-through to a session).
+    if is_api {
         if let Some(bearer) = request
             .headers()
             .get(AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.strip_prefix("Bearer "))
         {
-            let key_hash = hex::encode(Sha256::digest(bearer.as_bytes()));
-            let row = sqlx::query_as::<_, (String,)>(
-                "SELECT role FROM api_keys \
-                 WHERE key_hash = $1 AND (expires_at IS NULL OR expires_at > NOW())",
-            )
-            .bind(&key_hash)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten();
-
-            return match row {
-                Some((role,)) => {
-                    let db = state.db.clone();
-                    tokio::spawn(async move {
-                        let _ = sqlx::query(
-                            "UPDATE api_keys SET last_used_at = NOW() WHERE key_hash = $1",
-                        )
-                        .bind(&key_hash)
-                        .execute(&db)
-                        .await;
-                    });
+            return match api_keys::authenticate(&state.db, bearer).await {
+                Ok(Some(role)) => {
                     // Service accounts have no human identity.
                     request.extensions_mut().insert(Principal {
                         role,
@@ -109,30 +95,25 @@ pub async fn require_login(
                     });
                     next.run(request).await
                 }
-                None => StatusCode::UNAUTHORIZED.into_response(),
+                _ => StatusCode::UNAUTHORIZED.into_response(),
             };
         }
     }
 
-    // Session cookie check — fetches the identity and role baked in at login time
+    // Session cookie check — fetches the identity and role baked in at login time.
+    // A DB error is swallowed (treated as "no session") so an outage degrades to a
+    // login redirect rather than a 500 on every page.
     let principal = match jar.get("session_id") {
         None => None,
-        Some(cookie) => {
-            sqlx::query_as::<_, (String, String, Option<String>)>(
-                "SELECT role, email, username FROM sessions \
-                 WHERE id = $1 AND expires_at > NOW()",
-            )
-            .bind(cookie.value())
-            .fetch_optional(&state.db)
+        Some(cookie) => sessions::find(&state.db, cookie.value())
             .await
             .ok()
             .flatten()
-            .map(|(role, email, username)| Principal {
-                role,
-                email: Some(email),
-                username,
-            })
-        }
+            .map(|s| Principal {
+                role: s.role,
+                email: Some(s.email),
+                username: s.username,
+            }),
     };
 
     match principal {
@@ -140,7 +121,7 @@ pub async fn require_login(
             request.extensions_mut().insert(p);
             next.run(request).await
         }
-        None if path.starts_with("/api/") => StatusCode::UNAUTHORIZED.into_response(),
+        None if is_api => StatusCode::UNAUTHORIZED.into_response(),
         None => Redirect::to("/auth/login").into_response(),
     }
 }

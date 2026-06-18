@@ -151,6 +151,32 @@ src/routes/
 
 ---
 
+## Code layout
+
+`route.rs` handlers stay thin: extract the request, check authorization, call a
+service function, map the result to a response. All persistence and domain logic
+lives in service modules **outside** `src/routes/`, so it can be reused (the
+middleware and the admin handlers share the same API-key code) and read without
+the routing noise.
+
+```
+src/
+├── main.rs                 ← config, app wiring, startup (spawns the session reaper)
+├── error.rs                ← `enum Error` + `Result` alias + one `IntoResponse` impl
+└── auth/
+    ├── mod.rs              ← Principal, secure_cookie(), require_login middleware
+    ├── sessions.rs         ← create / find / delete sessions + background reaper
+    ├── api_keys.rs         ← bearer authentication + admin list/create/delete
+    ├── users.rs            ← user upsert on login
+    └── oidc.rs             ← begin() login URL + complete() code exchange & verify
+```
+
+A handler like `GET /api/admin/api_keys` is then just an admin guard plus
+`api_keys::list(&state.db).await?`; the SQL, hashing, and token generation are in
+[`auth/api_keys.rs`](src/auth/api_keys.rs).
+
+---
+
 ## Security middleware
 
 Every request passes through `require_login` before reaching a handler:

@@ -41,29 +41,6 @@ impl FromRef<AppState> for Key {
 #[folder_router("./src/routes", AppState)]
 struct ApiRouter();
 
-/// Periodically delete expired sessions. Without this, the `sessions` table grows
-/// one row per login forever — expired rows are filtered out of every query but
-/// never reclaimed. Runs hourly; the `sessions_expires_at_idx` index keeps the
-/// delete cheap.
-fn spawn_session_reaper(db: PgPool) {
-    tokio::spawn(async move {
-        let mut tick = tokio::time::interval(std::time::Duration::from_secs(3600));
-        loop {
-            tick.tick().await;
-            match sqlx::query("DELETE FROM sessions WHERE expires_at <= NOW()")
-                .execute(&db)
-                .await
-            {
-                Ok(r) if r.rows_affected() > 0 => {
-                    tracing::info!("reaped {} expired session(s)", r.rows_affected());
-                }
-                Ok(_) => {}
-                Err(e) => tracing::error!("session reaper failed: {e}"),
-            }
-        }
-    });
-}
-
 #[tokio::main]
 async fn main() {
     #[cfg(debug_assertions)]
@@ -82,7 +59,7 @@ async fn main() {
         .await
         .expect("failed to run migrations");
 
-    spawn_session_reaper(db.clone());
+    auth::sessions::spawn_reaper(db.clone());
 
     let provider_metadata = CoreProviderMetadata::discover_async(
         IssuerUrl::new(config.oidc_issuer).expect("invalid OIDC issuer URL"),
