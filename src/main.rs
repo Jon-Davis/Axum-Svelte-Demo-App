@@ -1,4 +1,5 @@
 mod auth;
+mod error;
 
 use axum::{Router, extract::FromRef};
 use axum_extra::extract::cookie::Key;
