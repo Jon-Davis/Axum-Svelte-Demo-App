@@ -3,7 +3,9 @@ mod config;
 mod error;
 mod health;
 
-use axum::{Router, extract::FromRef};
+use std::net::SocketAddr;
+
+use axum::extract::FromRef;
 use axum_extra::extract::cookie::Key;
 use axum_folder_router::folder_router;
 use openidconnect::{
@@ -11,8 +13,6 @@ use openidconnect::{
     reqwest::async_http_client,
 };
 use sqlx::PgPool;
-use tower_http::services::{ServeDir, ServeFile};
-use tower_http::trace::TraceLayer;
 
 use config::Config;
 
@@ -79,18 +79,22 @@ async fn main() {
         cookie_key: config.cookie_key,
     };
 
-    let api = ApiRouter::into_router().with_state(state.clone());
-
-    let app = Router::new()
-        .merge(api)
-        .fallback_service(
-            ServeDir::new("build").not_found_service(ServeFile::new("build/index.html")),
-        )
-        .layer(axum::middleware::from_fn_with_state(state, auth::require_login))
-        .layer(TraceLayer::new_for_http());
+    // The whole router is assembled from the `src/routes` tree: global layers
+    // (root `middleware.rs`), `/auth` rate limiting, `/api` auth, `/api/admin`
+    // authorization, and the static-app fallback (with its session guard) are
+    // all wired on by `middleware.rs`/`fallback.rs` files.
+    // `into_router_with_state` threads the state into each of them.
+    let app = ApiRouter::into_router_with_state(state);
 
     let addr = format!("{}:{}", config.host, config.port);
     tracing::info!("Listening on http://{addr}");
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    // `ConnectInfo` makes the peer address available to the `/auth` rate
+    // limiter's IP key extractor when no proxy headers are present.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }

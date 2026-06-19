@@ -1,5 +1,5 @@
 use axum::{
-    Extension, Json,
+    Json,
     extract::State,
     http::StatusCode,
 };
@@ -8,8 +8,8 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::auth::{api_keys, Principal};
-use crate::error::{Error, Result};
+use crate::auth::api_keys;
+use crate::error::Result;
 
 #[derive(Deserialize)]
 pub struct CreateRequest {
@@ -25,26 +25,16 @@ pub struct CreateResponse {
     token: String,
 }
 
-pub async fn get(
-    Extension(principal): Extension<Principal>,
-    State(state): State<AppState>,
-) -> Result<Json<Vec<api_keys::ApiKey>>> {
-    if !principal.is_admin() {
-        return Err(Error::Forbidden);
-    }
-
+// Admin-only: the `/api/admin` `middleware.rs` rejects non-admins before the
+// request reaches this handler.
+pub async fn get(State(state): State<AppState>) -> Result<Json<Vec<api_keys::ApiKey>>> {
     Ok(Json(api_keys::list(&state.db).await?))
 }
 
 pub async fn post(
-    Extension(principal): Extension<Principal>,
     State(state): State<AppState>,
     Json(body): Json<CreateRequest>,
 ) -> Result<(StatusCode, Json<CreateResponse>)> {
-    if !principal.is_admin() {
-        return Err(Error::Forbidden);
-    }
-
     let created = api_keys::create(&state.db, &body.name, &body.role, body.expires_at).await?;
 
     Ok((

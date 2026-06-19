@@ -8,9 +8,11 @@ tokio-console = ["dep:console-subscriber"]
 
 [dependencies]
 axum = "0.8"
-axum-folder-router = "0.4"
+axum-folder-router = { path = "../axum-folder-router" }
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.6", features = ["fs", "trace"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "trace", "set-header", "timeout", "limit", "compression-full", "request-id"] }
+tower_governor = { version = "0.8", default-features = false, features = ["axum"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 console-subscriber = { version = "0.5", optional = true }
