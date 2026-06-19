@@ -67,8 +67,13 @@ pub async fn require_login(
 ) -> Response {
     let path = request.uri().path();
 
-    // Auth flow and SvelteKit's bundled assets are always public
-    if path.starts_with("/auth/") || path.starts_with("/_app/") {
+    // Auth flow, SvelteKit's bundled assets, and the health probes are always
+    // public — a monitoring system must reach the probes without credentials.
+    if path.starts_with("/auth/")
+        || path.starts_with("/_app/")
+        || path == "/health"
+        || path == "/ready"
+    {
         return next.run(request).await;
     }
 

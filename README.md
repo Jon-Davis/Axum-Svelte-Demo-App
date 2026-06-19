@@ -145,6 +145,8 @@ src/routes/
 │   ├── login/route.rs            ← Axum: GET  /auth/login  (start OIDC flow)
 │   ├── callback/route.rs         ← Axum: GET  /auth/callback
 │   └── logout/route.rs           ← Axum: POST /auth/logout
+├── health/route.rs              ← Axum: GET /health  (liveness, public)
+├── ready/route.rs               ← Axum: GET /ready   (readiness, public)
 └── api/
     ├── hello/route.rs            ← Axum: GET /api/hello
     ├── me/route.rs               ← Axum: GET /api/me
@@ -174,6 +176,7 @@ src/
 ├── main.rs                 ← app wiring, startup (spawns the session reaper), `migrate` command
 ├── config.rs              ← env → validated, fully-typed `Config` (URLs, secret, conversions)
 ├── error.rs                ← `enum Error` + `Result` alias + one `IntoResponse` impl
+├── health.rs              ← liveness/readiness check helpers (DB ping)
 └── auth/
     ├── mod.rs              ← Principal, secure_cookie(), require_login middleware
     ├── sessions.rs         ← create / find / delete sessions + background reaper
@@ -195,7 +198,7 @@ Every request passes through `require_login` before reaching a handler:
 ```
 Request
   │
-  ├── /auth/* or /_app/*  →  pass through (public)
+  ├── /auth/*, /_app/*, /health, /ready  →  pass through (public)
   │
   ├── Bearer token present?
   │     ├── valid API key  →  attach Principal{role}, continue
@@ -208,6 +211,17 @@ Request
 ```
 
 Handlers that need a role check extract `Extension<Principal>` and call `principal.is_admin()`. No handler re-reads the session or hits the `users` table — the role is resolved once in middleware.
+
+---
+
+## Health checks
+
+Two unauthenticated probes, for use by orchestrators and load balancers:
+
+| Route | Probe | Behaviour |
+|---|---|---|
+| `GET /health` | Liveness | Always `200 {"status":"ok"}` — does no I/O, so it stays green while a dependency is down. Restart the process only if this fails. |
+| `GET /ready` | Readiness | `200 {"status":"ready"}` when Postgres answers a trivial query; `503 {"status":"unavailable"}` otherwise, so traffic is withheld until the DB is reachable. |
 
 ---
 

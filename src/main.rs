@@ -1,6 +1,7 @@
 mod auth;
 mod config;
 mod error;
+mod health;
 
 use axum::{Router, extract::FromRef};
 use axum_extra::extract::cookie::Key;
