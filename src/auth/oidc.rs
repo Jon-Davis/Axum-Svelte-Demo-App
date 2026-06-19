@@ -76,9 +76,26 @@ pub async fn complete(client: &CoreClient, code: String, flow: &FlowState) -> Re
         Error::Unauthorized
     })?;
 
+    // Only trust an email the provider says it has verified. We key identity on
+    // `sub`, but the stored email is matched on elsewhere (admin bootstrap is
+    // `UPDATE users SET role='admin' WHERE email=…`), so an unverified address —
+    // which some providers let a user set freely — must never be persisted.
+    // Reject the login rather than store an untrustworthy email.
+    let email = match (claims.email(), claims.email_verified()) {
+        (Some(email), Some(true)) => email.to_string(),
+        (Some(_), _) => {
+            tracing::warn!("rejecting login: email present but not verified by provider");
+            return Err(Error::Unauthorized);
+        }
+        (None, _) => {
+            tracing::warn!("rejecting login: provider returned no email claim");
+            return Err(Error::Unauthorized);
+        }
+    };
+
     Ok(OidcUser {
         sub: claims.subject().to_string(),
-        email: claims.email().map(|e| e.to_string()).unwrap_or_default(),
+        email,
         username: claims.preferred_username().map(|u| u.to_string()),
     })
 }

@@ -53,7 +53,17 @@ Copy-Item .env.example .env
 
 The defaults in `.env.example` work with the local Podman setup as-is. See [Environment variables](#environment-variables) for details.
 
-### 3. Run the application
+### 3. Run the database migrations
+
+Migrations are a manual step — they do **not** run on startup. Apply them once (and again after pulling new migrations):
+
+```powershell
+cargo run -- migrate
+```
+
+This applies any pending migrations and exits.
+
+### 4. Run the application
 
 ```powershell
 cargo run
@@ -161,7 +171,8 @@ the routing noise.
 
 ```
 src/
-├── main.rs                 ← config, app wiring, startup (spawns the session reaper)
+├── main.rs                 ← app wiring, startup (spawns the session reaper), `migrate` command
+├── config.rs              ← env → validated, fully-typed `Config` (URLs, secret, conversions)
 ├── error.rs                ← `enum Error` + `Result` alias + one `IntoResponse` impl
 └── auth/
     ├── mod.rs              ← Principal, secure_cookie(), require_login middleware
@@ -202,7 +213,13 @@ Handlers that need a role check extract `Extension<Principal>` and call `princip
 
 ## Database migrations
 
-Migrations are embedded at compile time with `sqlx::migrate!()` and run automatically on startup. No live database is required to compile.
+Migrations are embedded at compile time with `sqlx::migrate!()`. They are applied manually — not on startup — so a deploy never silently alters the schema:
+
+```powershell
+cargo run -- migrate    # apply pending migrations, then exit
+```
+
+No live database is required to compile.
 
 | Migration | Description |
 |---|---|
