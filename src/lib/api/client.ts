@@ -1,42 +1,19 @@
-// Hand-written DTOs mirroring the Rust API types. Keep these in sync by hand
-// with the backend structs:
-//   - ApiKey                       → src/auth/api_keys.rs
-//   - UserInfo                     → src/routes/api/me/route.rs
-//   - HelloResponse                → src/routes/api/hello/route.rs
-//   - CreateRequest/CreateResponse → src/routes/api/admin/api_keys/route.rs
-// time::OffsetDateTime fields serialise to RFC3339 strings, so they're typed as
-// `string` here and parsed with `new Date(iso)`.
-
-export type ApiKey = {
-  id: string;
-  name: string;
-  role: string;
-  created_at: string;
-  expires_at: string | null;
-  last_used_at: string | null;
-};
-
-export type CreateRequest = {
-  name: string;
-  role: string;
-  expires_at: string | null;
-};
-
-export type CreateResponse = {
-  id: string;
-  name: string;
-  token: string;
-};
-
-export type HelloResponse = {
-  message: string;
-};
-
-export type UserInfo = {
-  email: string | null;
-  username: string | null;
-  role: string;
-};
+// DTOs are generated from the Rust structs by `typeshare` into ./generated.ts
+// (`cargo build` / `npm run gen:types` regenerate it; it is committed so the
+// frontend type-checks without a Rust toolchain). The wrappers and `ApiError`
+// below are hand-written and import those types. `OffsetDateTime`/`Uuid` fields serialise to strings (see
+// typeshare.toml) and are parsed with `new Date(iso)` at the call site.
+//
+// NOTE: Rust `Option<T>` becomes an optional `field?: T` (i.e. `string |
+// undefined`) here, not `string | null`.
+export type {
+  ApiKey,
+  CreateRequest,
+  CreateResponse,
+  HelloResponse,
+  UserInfo,
+} from './generated';
+import type { CreateRequest, CreateResponse, HelloResponse, UserInfo, ApiKey } from './generated';
 
 /** Thrown by every wrapper below on a non-2xx response. Carries the numeric
  *  status so callers can branch on it (e.g. 403) without parsing the message. */

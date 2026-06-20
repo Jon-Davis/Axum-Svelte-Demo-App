@@ -8,12 +8,14 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use time::OffsetDateTime;
+use typeshare::typeshare;
 use uuid::Uuid;
 
 use super::db;
 use crate::error::{Error, Result};
 
 /// A key as shown in the admin panel (never includes the secret).
+#[typeshare]
 #[derive(Serialize, sqlx::FromRow)]
 pub struct ApiKey {
     pub id: Uuid,

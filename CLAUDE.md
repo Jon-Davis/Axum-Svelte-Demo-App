@@ -84,10 +84,12 @@ code):
 ## Commands
 
 ```powershell
+cargo install typeshare-cli # one-time: required on PATH for type generation
 cargo check                 # fast iteration — does NOT build the frontend
-cargo run                   # build.rs builds the Svelte frontend, then runs (:3000)
+cargo run                   # build.rs generates TS types + builds the Svelte frontend, then runs (:3000)
 cargo run -- migrate        # apply pending migrations, then exit (NEVER auto-runs)
 npm run dev                 # Vite HMR on :5173, proxies /api/* to Rust (run alongside cargo run)
+npm run gen:types           # regenerate src/lib/api/generated.ts from the #[typeshare] DTOs
 .\scripts\db-start.ps1      # start Postgres + Dex (Podman)
 .\scripts\db-stop.ps1
 ```
@@ -105,15 +107,31 @@ npm run dev                 # Vite HMR on :5173, proxies /api/* to Rust (run alo
 
 API DTOs are plain `serde` structs in the handlers/services that own them (e.g.
 [src/auth/api_keys.rs](src/auth/api_keys.rs),
-[src/routes/api/me/route.rs](src/routes/api/me/route.rs)). The frontend mirrors
-them as **hand-written** TypeScript in
-[src/lib/api/client.ts](src/lib/api/client.ts), which also holds the typed
-`fetch` wrappers the Svelte files import from `$lib/api/client`. There is no code
-generation — keep the two sides in sync by hand when you change a DTO.
+[src/routes/api/me/route.rs](src/routes/api/me/route.rs)). Each is annotated with
+`#[typeshare]`, and the [`typeshare`](https://github.com/1Password/typeshare) CLI
+generates the matching TypeScript into **`src/lib/api/generated.ts`** (a
+generated file — committed so the frontend type-checks without a Rust
+toolchain, but regenerated on every build; do not edit by hand).
+[src/lib/api/client.ts](src/lib/api/client.ts) re-exports those types and holds
+the hand-written `fetch` wrappers + `ApiError` that the Svelte files import from
+`$lib/api/client`.
 
-**Convention for `time::OffsetDateTime` fields:** they serialise to RFC3339
-strings (the `time` crate's `serde-human-readable` feature), so the TS side types
-them as `string` and parses them with `new Date(iso)`.
+- **Generation runs automatically** as the first step of `build.rs` (so a plain
+  `cargo build` regenerates types → builds the frontend → compiles the binary),
+  and via `npm run gen:types` for Node-only flows. `npm run dev`/`check` run it
+  first. **Prerequisite:** `cargo install typeshare-cli` (like `npm`, it must be
+  on `PATH`). The driver lives in the `svelte-rust` crate
+  (`build::typescript_types`, [../svelte-rust/src/lib.rs](../svelte-rust/src/lib.rs)).
+- **Only `#[typeshare]`-bearing `.rs` files get `rerun-if-changed`** — editing
+  other Rust files won't regenerate or rebuild the frontend, preserving fast
+  `cargo check`. Adding a `#[typeshare]` DTO to a *new* file is picked up
+  automatically (the driver scans `src/`).
+- **`time::OffsetDateTime` and `Uuid` → `string`** via `[typescript.type_mappings]`
+  in [typeshare.toml](typeshare.toml) (RFC3339 / hyphenated-UUID serialisation);
+  parse dates with `new Date(iso)`.
+- **`Option<T>` becomes an optional `field?: T`** (`string | undefined`), *not*
+  `string | null` — even though serde serialises `None` as JSON `null`. Use
+  falsy checks (`if (!x)`) at call sites; don't compare `=== null`.
 
 ## Gotchas
 

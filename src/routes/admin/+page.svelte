@@ -41,7 +41,7 @@
       const data = await createApiKey({
         name: newName.trim(),
         role: newRole,
-        expires_at: newExpiry ? new Date(newExpiry).toISOString() : null,
+        expires_at: newExpiry ? new Date(newExpiry).toISOString() : undefined,
       });
       createdToken = data.token;
       newName = '';
@@ -73,7 +73,7 @@
     setTimeout(() => { copied = false; }, 2000);
   }
 
-  function fmt(iso: string | null): string {
+  function fmt(iso: string | undefined): string {
     if (!iso) return '—';
     return new Date(iso).toLocaleString();
   }

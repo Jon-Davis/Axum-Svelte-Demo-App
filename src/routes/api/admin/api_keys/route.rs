@@ -1,24 +1,27 @@
 use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use typeshare::typeshare;
 use uuid::Uuid;
 
 use crate::AppState;
 use crate::auth::api_keys;
 use crate::error::Result;
 
+#[typeshare]
 #[derive(Deserialize)]
 pub struct CreateRequest {
-    name: String,
-    role: String,
-    expires_at: Option<OffsetDateTime>,
+    pub name: String,
+    pub role: String,
+    pub expires_at: Option<OffsetDateTime>,
 }
 
+#[typeshare]
 #[derive(Serialize)]
 pub struct CreateResponse {
-    id: Uuid,
-    name: String,
-    token: String,
+    pub id: Uuid,
+    pub name: String,
+    pub token: String,
 }
 
 // Admin-only: the `/api/admin` `middleware.rs` rejects non-admins before the

@@ -1,9 +1,11 @@
 use axum::{response::IntoResponse, Json};
 use serde::Serialize;
+use typeshare::typeshare;
 
+#[typeshare]
 #[derive(Serialize)]
-struct HelloResponse {
-    message: String,
+pub struct HelloResponse {
+    pub message: String,
 }
 
 pub async fn get() -> impl IntoResponse {

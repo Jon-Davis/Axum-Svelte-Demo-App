@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
+    "gen:types": "typeshare ./src --lang=typescript --config-file=typeshare.toml --output-file=src/lib/api/generated.ts",
+    "dev": "npm run gen:types && vite dev",
+    "build": "npm run gen:types && vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json"
+    "check": "npm run gen:types && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "svelte": "^5.0.0"

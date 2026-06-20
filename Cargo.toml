@@ -32,6 +32,7 @@ time = { version = "0.3", features = ["serde-human-readable"] }
 rand = "0.8"
 sha2 = "0.10"
 hex = "0.4"
+typeshare = "1"
 
 [build-dependencies]
 svelte-rust = { path = "../svelte-rust" }

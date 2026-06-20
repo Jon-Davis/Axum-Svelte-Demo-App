@@ -25,6 +25,8 @@ One server process. Rust handles everything. The SvelteKit side is compiled to p
 - [podman-compose](https://github.com/containers/podman-compose)
 - Rust toolchain (`cargo`)
 - Node.js + npm
+- [`typeshare`](https://github.com/1Password/typeshare) CLI — `cargo install typeshare-cli`
+  (generates the TS API types from the Rust DTOs during the build)
 
 ### 1. Start the database and identity provider
 
@@ -267,10 +269,11 @@ Postgres-specific variables (`POSTGRES_USER`, `POSTGRES_PASSWORD`, etc.) are onl
 
 `cargo build` compiles both halves:
 
-1. `build.rs` detects changes to `.svelte`, `.js`, `.ts`, `.css`, or `.html` files under `src/routes/`, plus `svelte.config.js`, `vite.config.js`, and `package.json`.
-2. If `node_modules/` is missing it runs `npm install` first.
-3. Runs `npm run build`, writing prerendered output to `build/`.
-4. Writes `.frontend-stamp` so Cargo skips the frontend build when nothing changed.
+1. `build.rs` runs `typeshare` over `src/`, regenerating `src/lib/api/generated.ts` from the `#[typeshare]` DTOs. It only watches `#[typeshare]`-bearing `.rs` files, so editing other Rust files doesn't re-trigger this (or the frontend build).
+2. `build.rs` detects changes to `.svelte`, `.js`, `.ts`, `.css`, or `.html` files under `src/routes/`, plus `svelte.config.js`, `vite.config.js`, and `package.json`.
+3. If `node_modules/` is missing it runs `npm install` first.
+4. Runs `npm run build`, writing prerendered output to `build/`.
+5. Writes `.frontend-stamp` so Cargo skips the frontend build when nothing changed.
 
 ---
 
