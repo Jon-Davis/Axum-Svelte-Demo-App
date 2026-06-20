@@ -1,19 +1,31 @@
-<script>
+<script lang="ts">
   import { onMount } from 'svelte';
+  import { getMe, getHello } from '$lib/api/client';
+  import type { UserInfo, HelloResponse } from '$lib/api/client';
 
   let count = $state(0);
   let apiMessage = $state('(not fetched)');
-  let user = $state(null);
+  let user = $state<UserInfo | null>(null);
+
+  // `??` only guards null/undefined; use `||` so an empty-string username/email
+  // also falls through (otherwise `''[0]` below would throw).
+  const displayName = $derived(user ? (user.username || user.email || '?') : '?');
 
   async function fetchHello() {
-    const res = await fetch('/api/hello');
-    const data = await res.json();
-    apiMessage = data.message;
+    try {
+      const data: HelloResponse = await getHello();
+      apiMessage = data.message;
+    } catch (e) {
+      apiMessage = `(error: ${e instanceof Error ? e.message : String(e)})`;
+    }
   }
 
   onMount(async () => {
-    const res = await fetch('/api/me');
-    if (res.ok) user = await res.json();
+    try {
+      user = await getMe();
+    } catch {
+      // not logged in
+    }
   });
 </script>
 
@@ -25,8 +37,8 @@
   <span class="brand">Svelte + Rust/Axum</span>
   {#if user}
     <div class="profile">
-      <span class="avatar">{(user.username ?? user.email)[0].toUpperCase()}</span>
-      <span>{user.username ?? user.email}</span>
+      <span class="avatar">{displayName[0].toUpperCase()}</span>
+      <span>{displayName}</span>
       {#if user.role === 'admin'}
         <a href="/admin/">Admin panel</a>
       {/if}

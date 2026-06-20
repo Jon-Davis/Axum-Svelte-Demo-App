@@ -13,9 +13,11 @@ pub fn fallback(router: Router<AppState>, state: AppState) -> Router<AppState> {
     // Wrapping the static service in its own Router keeps `require_page_auth`
     // scoped to the fallback (not layered over the whole tree) and normalises
     // the `ServeDir` body type so it's accepted as a `fallback_service`.
+    const BUILD_DIR: &str = env!("SVELTE_BUILD_DIR");
     let static_files = Router::new()
         .fallback_service(
-            ServeDir::new("build").not_found_service(ServeFile::new("build/index.html")),
+            ServeDir::new(BUILD_DIR)
+                .not_found_service(ServeFile::new(format!("{BUILD_DIR}/index.html"))),
         )
         .layer(from_fn_with_state(state, require_page_auth));
 

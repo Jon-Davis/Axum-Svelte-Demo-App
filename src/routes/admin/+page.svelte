@@ -1,66 +1,79 @@
-<script>
+<script lang="ts">
   import { onMount } from 'svelte';
+  import { listApiKeys, createApiKey, deleteApiKey, ApiError } from '$lib/api/client';
+  import type { ApiKey } from '$lib/api/client';
 
-  let keys = $state([]);
+  let keys = $state<ApiKey[]>([]);
   let loading = $state(true);
   let forbidden = $state(false);
+  let actionError = $state<string | null>(null);
   let newName = $state('');
   let newRole = $state('user');
   let newExpiry = $state('');
   let creating = $state(false);
-  let createdToken = $state(null);
+  let createdToken = $state<string | null>(null);
   let copied = $state(false);
 
   onMount(loadKeys);
 
+  function describe(e: unknown): string {
+    return e instanceof Error ? e.message : String(e);
+  }
+
   async function loadKeys() {
     loading = true;
-    const res = await fetch('/api/admin/api_keys');
-    if (res.status === 403) {
-      forbidden = true;
-    } else if (res.ok) {
-      keys = await res.json();
+    actionError = null;
+    try {
+      keys = await listApiKeys();
+    } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 403) forbidden = true;
+      else actionError = `Failed to load keys: ${describe(e)}`;
     }
     loading = false;
   }
 
-  async function createKey(e) {
+  async function createKey(e: SubmitEvent) {
     e.preventDefault();
     if (!newName.trim()) return;
     creating = true;
-    const res = await fetch('/api/admin/api_keys', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    actionError = null;
+    try {
+      const data = await createApiKey({
         name: newName.trim(),
         role: newRole,
         expires_at: newExpiry ? new Date(newExpiry).toISOString() : null,
-      }),
-    });
-    if (res.ok) {
-      const data = await res.json();
+      });
       createdToken = data.token;
       newName = '';
       newRole = 'user';
       newExpiry = '';
       await loadKeys();
+    } catch (e: unknown) {
+      actionError = `Failed to create key: ${describe(e)}`;
+    } finally {
+      creating = false;
     }
-    creating = false;
   }
 
-  async function revokeKey(id, name) {
+  async function revokeKey(id: string, name: string) {
     if (!confirm(`Revoke key "${name}"? This cannot be undone.`)) return;
-    const res = await fetch(`/api/admin/api_keys/${id}`, { method: 'DELETE' });
-    if (res.ok) await loadKeys();
+    actionError = null;
+    try {
+      await deleteApiKey(id);
+      await loadKeys();
+    } catch (e: unknown) {
+      actionError = `Failed to revoke key: ${describe(e)}`;
+    }
   }
 
   async function copyToken() {
+    if (!createdToken) return;
     await navigator.clipboard.writeText(createdToken);
     copied = true;
     setTimeout(() => { copied = false; }, 2000);
   }
 
-  function fmt(iso) {
+  function fmt(iso: string | null): string {
     if (!iso) return '—';
     return new Date(iso).toLocaleString();
   }
@@ -74,6 +87,10 @@
   {:else if loading}
     <p class="muted">Loading…</p>
   {:else}
+    {#if actionError}
+      <p class="error">{actionError}</p>
+    {/if}
+
     {#if createdToken}
       <div class="banner">
         <p><strong>Key created — copy it now. It will not be shown again.</strong></p>
