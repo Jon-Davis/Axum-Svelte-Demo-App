@@ -12,7 +12,7 @@ struct Readiness {
 /// Readiness probe: the app can serve real traffic, which means its dependencies
 /// are reachable. Returns 503 while the database is down so a load balancer pulls
 /// this instance out of rotation without the process being restarted.
-pub async fn get(State(state): State<AppState>) -> impl IntoResponse {
+pub async fn get(State(state): State<&'static AppState>) -> impl IntoResponse {
     if health::db_ready(&state.db).await {
         (StatusCode::OK, Json(Readiness { status: "ready" }))
     } else {

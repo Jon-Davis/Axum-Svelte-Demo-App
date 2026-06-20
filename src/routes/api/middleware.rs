@@ -8,7 +8,10 @@ use axum::{Router, middleware::from_fn_with_state};
 use crate::AppState;
 use crate::auth::require_api_auth;
 
-pub fn middleware(router: Router<AppState>, state: AppState) -> Router<AppState> {
+pub fn middleware(
+    router: Router<&'static AppState>,
+    state: &'static AppState,
+) -> Router<&'static AppState> {
     // `route_layer` (vs `layer`) skips the middleware on unmatched paths.
     router.route_layer(from_fn_with_state(state, require_api_auth))
 }

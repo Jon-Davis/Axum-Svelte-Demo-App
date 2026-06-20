@@ -7,7 +7,7 @@ use crate::auth::sessions;
 // POST, not GET: a state-changing action must not be triggerable by a cross-site
 // `<img src="/auth/logout">` or link prefetch. Combined with the session cookie's
 // `SameSite=Lax`, this closes logout CSRF.
-pub async fn post(State(state): State<AppState>, jar: PrivateCookieJar) -> impl IntoResponse {
+pub async fn post(State(state): State<&'static AppState>, jar: PrivateCookieJar) -> impl IntoResponse {
     if let Some(session_cookie) = jar.get("session_id") {
         // Best-effort: a DB hiccup must not stop us clearing the cookie.
         let _ = sessions::delete(&state.db, session_cookie.value()).await;

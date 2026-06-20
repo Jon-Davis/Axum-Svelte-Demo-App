@@ -26,12 +26,12 @@ pub struct CreateResponse {
 
 // Admin-only: the `/api/admin` `middleware.rs` rejects non-admins before the
 // request reaches this handler.
-pub async fn get(State(state): State<AppState>) -> Result<Json<Vec<api_keys::ApiKey>>> {
+pub async fn get(State(state): State<&'static AppState>) -> Result<Json<Vec<api_keys::ApiKey>>> {
     Ok(Json(api_keys::list(&state.db).await?))
 }
 
 pub async fn post(
-    State(state): State<AppState>,
+    State(state): State<&'static AppState>,
     Json(body): Json<CreateRequest>,
 ) -> Result<(StatusCode, Json<CreateResponse>)> {
     let created = api_keys::create(&state.db, &body.name, &body.role, body.expires_at).await?;

@@ -9,7 +9,10 @@ use tower_http::services::{ServeDir, ServeFile};
 use crate::AppState;
 use crate::auth::require_page_auth;
 
-pub fn fallback(router: Router<AppState>, state: AppState) -> Router<AppState> {
+pub fn fallback(
+    router: Router<&'static AppState>,
+    state: &'static AppState,
+) -> Router<&'static AppState> {
     // Wrapping the static service in its own Router keeps `require_page_auth`
     // scoped to the fallback (not layered over the whole tree) and normalises
     // the `ServeDir` body type so it's accepted as a `fallback_service`.

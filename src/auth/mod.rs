@@ -88,7 +88,7 @@ async fn session_principal(state: &AppState, jar: &PrivateCookieJar) -> Option<P
 /// public siblings `/auth`, `/health` and `/ready` — which live outside this
 /// folder — need no carve-out here.
 pub async fn require_api_auth(
-    State(state): State<AppState>,
+    State(state): State<&'static AppState>,
     jar: PrivateCookieJar,
     mut request: Request,
     next: Next,
@@ -131,7 +131,7 @@ pub async fn require_api_auth(
 /// than refused. Static files don't read the `Principal`, so this only gates
 /// access — it doesn't bother attaching it.
 pub async fn require_page_auth(
-    State(state): State<AppState>,
+    State(state): State<&'static AppState>,
     jar: PrivateCookieJar,
     request: Request,
     next: Next,

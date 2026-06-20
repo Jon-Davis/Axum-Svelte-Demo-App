@@ -16,20 +16,23 @@ use sqlx::PgPool;
 
 use config::Config;
 
-#[derive(Clone)]
 pub struct AppState {
     pub db: PgPool,
     pub oidc: CoreClient,
     pub cookie_key: Key,
 }
 
-impl FromRef<AppState> for Key {
-    fn from_ref(state: &AppState) -> Self {
+// The router is parameterized over `&'static AppState` (the state is `Box::leak`ed
+// once in `main`), so the `State` clone axum does per request is a pointer copy
+// rather than a deep clone of the `CoreClient`/`Key`. `FromRef` is therefore
+// implemented for the reference type.
+impl FromRef<&'static AppState> for Key {
+    fn from_ref(state: &&'static AppState) -> Self {
         state.cookie_key.clone()
     }
 }
 
-#[folder_router("./src/routes", AppState)]
+#[folder_router("./src/routes", &'static AppState)]
 struct ApiRouter();
 
 #[tokio::main]
@@ -73,11 +76,13 @@ async fn main() {
     )
     .set_redirect_uri(config.oidc_redirect_uri);
 
-    let state = AppState {
+    // Leak the state once so every clone the router/handlers make is a cheap
+    // pointer copy. It lives for the whole process, so there's nothing to free.
+    let state: &'static AppState = Box::leak(Box::new(AppState {
         db,
         oidc,
         cookie_key: config.cookie_key,
-    };
+    }));
 
     // The whole router is assembled from the `src/routes` tree: global layers
     // (root `middleware.rs`), `/auth` rate limiting, `/api` auth, `/api/admin`

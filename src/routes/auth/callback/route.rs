@@ -20,7 +20,7 @@ pub struct CallbackParams {
 }
 
 pub async fn get(
-    State(state): State<AppState>,
+    State(state): State<&'static AppState>,
     jar: PrivateCookieJar,
     Query(params): Query<CallbackParams>,
 ) -> Result<Response> {
