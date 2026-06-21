@@ -22,6 +22,7 @@ Platform is **Windows / PowerShell**; containers run under **Podman**, not Docke
 | `+page.svelte`, `+layout.svelte`, `+layout.js` | SvelteKit | a page / layout |
 | `route.rs` | `axum-folder-router` | an Axum handler at the folder's URL |
 | `middleware.rs` | `axum-folder-router` | middleware over the folder's subtree |
+| `intercept.rs` | `axum-folder-router` | per-request guard over the folder's subtree (incl. its fallback) |
 | `fallback.rs` | `axum-folder-router` | fallback for unmatched paths in the subtree |
 
 Folder path = URL. `[id]` folders become `:id` path params. The macro entry point
@@ -40,34 +41,53 @@ own tests live in the fork** (`../axum-folder-router/tests`), not here.
 The macro picks the form by arity:
 
 - **Stateless** — `fn middleware<S>(router: Router<S>) -> Router<S> where S: Clone + Send + Sync + 'static`
-- **Stateful** — `fn middleware(router: Router<AppState>, state: AppState) -> Router<AppState>`
+- **Stateful** — `fn middleware(router: Router<&'static AppState>, state: &'static AppState) -> Router<&'static AppState>`
 
 Use the stateful form only when the layer needs `AppState` at build time (e.g.
 `from_fn_with_state`). Any stateful middleware/fallback anywhere in the tree makes
 `into_router_with_state` the required entry point. `fallback.rs` follows the same
 two-form rule with a `fallback(...)` function.
 
-A subtree that has a `middleware.rs` **or** `fallback.rs` is a "boundary" and gets
-`nest`ed at its prefix; plain subtrees stay flat-inlined. A catch-all (`[...rest]`)
-folder **cannot** own a `middleware.rs`/`fallback.rs` (axum forbids wildcards in a
-nest prefix) — the macro rejects it at compile time.
+A subtree that has a `middleware.rs`, `fallback.rs` **or** `intercept.rs` is a
+"boundary" and gets `nest`ed at its prefix; plain subtrees stay flat-inlined. A
+catch-all (`[...rest]`) folder **cannot** own a boundary file (axum forbids
+wildcards in a nest prefix) — the macro rejects it at compile time.
 
-### Where the actual middleware lives in this app
+### intercept.rs — per-request guards
 
-The `*/middleware.rs` and `fallback.rs` files are **thin wrappers**; the logic is
-in `crate::auth`. Current wiring (the README's "Security middleware" section
-describes the older monolithic `require_login` and is out of date — trust the
-code):
+`intercept.rs` is the boundary file for the "inspect each request, then let it
+through (optionally mutated) or divert it" case. It exposes a `pub async fn
+intercept(req) -> ControlFlow<Response, Request>` (or `intercept(req, state)` for
+the stateful form); `Continue(req)` proceeds, `Break(resp)` short-circuits. The
+macro generates the layer and **always attaches it with `.layer` (never
+`route_layer`)**, so it runs over the subtree's routes **and** its (possibly
+inherited) fallback — a guard can't silently skip an unmatched/fallback-served
+path. `Continue(req)` carries the request forward, so an intercept can also insert
+a request extension (e.g. a `Principal`) for downstream handlers. An intercept
+only sees the request, never the response — use `middleware.rs` to touch the
+response on the way out.
+
+### Where the actual guards live in this app
+
+The `*/middleware.rs`, `intercept.rs` and `fallback.rs` files are **thin wrappers
+or short guards**; the shared logic is in `crate::auth`. Current wiring (the
+README's "Security middleware" section describes the older monolithic
+`require_login` and is out of date — trust the code):
 
 | File | Effect |
 |---|---|
 | [src/routes/middleware.rs](src/routes/middleware.rs) | global: request-id, tracing, body limit, compression, security headers, timeout |
 | [src/routes/auth/middleware.rs](src/routes/auth/middleware.rs) | rate limiting on `/auth` (`tower_governor`) |
-| [src/routes/api/middleware.rs](src/routes/api/middleware.rs) | `require_api_auth` — Bearer or session, else 401 |
-| [src/routes/api/admin/middleware.rs](src/routes/api/admin/middleware.rs) | `require_admin` — role check |
+| [src/routes/api/intercept.rs](src/routes/api/intercept.rs) | authenticates `/api` (Bearer or session), attaches `Principal`, else 401 |
+| [src/routes/api/admin/intercept.rs](src/routes/api/admin/intercept.rs) | admin-only role check on `/api/admin`, else 403 |
+| [src/routes/admin/intercept.rs](src/routes/admin/intercept.rs) | server-side guard on the `/admin` **page**: non-admins → redirect to `/forbidden` |
 | [src/routes/fallback.rs](src/routes/fallback.rs) | serves `build/` behind `require_page_auth` (session → redirect) |
 
 `/auth`, `/health`, `/ready` live outside `/api`, so they need no auth carve-out.
+
+Because intercepts use `.layer` (not `route_layer`), an unmatched `/api/*` path
+now returns 401 from the `/api` intercept rather than falling through to the
+static fallback — the auth check is not skipped on unknown API paths.
 
 ## Code conventions
 
@@ -75,6 +95,13 @@ code):
   service function, maps the result. All SQL/domain logic lives in service modules
   **outside** `src/routes/` (`src/auth/*`). Don't put `sqlx` queries in handlers —
   in this codebase every query is in `src/auth/db.rs`, reached through services.
+- **App state is `&'static AppState`, not `AppState`.** `main` `Box::leak`s the
+  state once, so the router is parameterized over the reference and the per-request
+  `State` clone is a pointer copy (not a deep clone of the `CoreClient`/cookie
+  `Key`). Handlers take `State<&'static AppState>` and `FromRef` is implemented for
+  `&'static AppState`; the folder-router macro is invoked with `&'static AppState`.
+  `state.db` / `state.oidc` work unchanged. (The macro fork accepts a full type
+  here, not just an ident — see its `parse.rs`.)
 - **Roles** resolve once in middleware into a `Principal` (request extension).
   Handlers read `Extension<Principal>`; they never re-read the session or hit the
   `users` table.
@@ -130,8 +157,13 @@ the hand-written `fetch` wrappers + `ApiError` that the Svelte files import from
   in [typeshare.toml](typeshare.toml) (RFC3339 / hyphenated-UUID serialisation);
   parse dates with `new Date(iso)`.
 - **`Option<T>` becomes an optional `field?: T`** (`string | undefined`), *not*
-  `string | null` — even though serde serialises `None` as JSON `null`. Use
-  falsy checks (`if (!x)`) at call sites; don't compare `=== null`.
+  `string | null`. A DTO with optional fields must carry
+  `#[skip_serializing_none]` (from `serde_with`, placed **above** `#[typeshare]`
+  so it rewrites the `Serialize` derive) — that omits `None` fields from the JSON
+  entirely instead of serialising them as `null`, so the wire matches the
+  `field?: T` type with no client-side null→undefined fixup. Without it serde
+  would emit `null` and contradict the generated type. Still use falsy checks
+  (`if (!x)`) at call sites; don't compare `=== null`.
 
 ## Gotchas
 

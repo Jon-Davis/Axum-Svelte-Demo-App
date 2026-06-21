@@ -27,7 +27,7 @@ dotenvy = "0.15"
 envy = "0.4"
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "time", "migrate"] }
 openidconnect = { version = "3", features = ["reqwest"] }
-axum-extra = { version = "0.12", features = ["cookie-private"] }
+axum-extra = { version = "0.12", features = ["cookie-private", "typed-header"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 time = { version = "0.3", features = ["serde-human-readable"] }
 rand = "0.8"

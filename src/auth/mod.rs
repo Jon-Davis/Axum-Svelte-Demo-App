@@ -1,10 +1,9 @@
 //! Authentication and authorization. Submodules hold the persistence/service
 //! logic the route handlers call into; this root keeps the cross-cutting pieces:
-//! the request `Principal`, the secure-cookie builder, and the middleware
-//! functions that guard the app. The middleware here is the *logic*; it's wired
-//! onto the route tree by the thin `middleware.rs` wrappers under `src/routes`
-//! (`require_api_auth`, `require_admin`) and onto the static fallback in `main`
-//! (`require_page_auth`).
+//! the request `Principal`, the secure-cookie builder, and the auth helpers that
+//! guard the app. The logic here is consumed by the `intercept.rs` guards under
+//! `src/routes` (`api`, `api/admin`, `admin` all call `principal_from_headers` /
+//! read the `Principal`) and by the static fallback (`require_page_auth`).
 
 pub mod api_keys;
 pub mod oidc;
@@ -16,21 +15,26 @@ pub mod users;
 mod db;
 
 use axum::{
-    Extension,
     extract::{Request, State},
-    http::{header::AUTHORIZATION, StatusCode},
     middleware::Next,
     response::{IntoResponse, Redirect, Response},
 };
 use axum_extra::extract::cookie::{Cookie, PrivateCookieJar, SameSite};
 
 use crate::AppState;
-use crate::error::Error;
 
 /// The roles the application recognises. Anything outside this set is rejected
 /// at the boundary (API-key creation) so a typo can never produce a key that
 /// silently fails every `is_admin()` check.
 pub const VALID_ROLES: [&str; 2] = ["user", "admin"];
+
+/// `Authorization: Bearer …` typed-header extractor, aliased here so the `/api`
+/// intercept can name it without the full `axum_extra` path. The `folder_router`
+/// macro reproduces an intercept's parameter types at its invocation site, so the
+/// alias is referenced there by crate-absolute path (`crate::auth::BearerHeader`),
+/// which resolves regardless of what that site imports.
+pub type BearerHeader =
+    axum_extra::TypedHeader<axum_extra::headers::Authorization<axum_extra::headers::authorization::Bearer>>;
 
 /// Attached to every authenticated request by `require_login`.
 /// Handlers extract it with `Extension<Principal>` to check roles and identity.
@@ -67,7 +71,11 @@ pub fn secure_cookie<'a>(name: &'a str, value: String) -> Cookie<'a> {
 /// Resolve the caller from their session cookie, or `None` if there's no valid
 /// session. A DB error is swallowed (treated as "no session") so an outage
 /// degrades to a login redirect / 401 rather than a 500 on every request.
-async fn session_principal(state: &AppState, jar: &PrivateCookieJar) -> Option<Principal> {
+///
+/// Public so the `intercept.rs` guards can call it with the `PrivateCookieJar`
+/// they extract (the `/api` and `/admin` intercepts) — no manual jar
+/// reconstruction needed now that intercepts accept extractors.
+pub async fn session_principal(state: &AppState, jar: &PrivateCookieJar) -> Option<Principal> {
     let cookie = jar.get("session_id")?;
     sessions::find(&state.db, cookie.value())
         .await
@@ -78,52 +86,6 @@ async fn session_principal(state: &AppState, jar: &PrivateCookieJar) -> Option<P
             email: Some(s.email),
             username: s.username,
         })
-}
-
-/// Auth for the entire `/api` subtree. Accepts a Bearer API key (service
-/// accounts) or a session cookie (a browser calling its own API); anything else
-/// is a 401. Never redirects — API callers get a status code, not HTML.
-///
-/// This only runs on matched `/api` routes (wired with `route_layer`), so the
-/// public siblings `/auth`, `/health` and `/ready` — which live outside this
-/// folder — need no carve-out here.
-pub async fn require_api_auth(
-    State(state): State<&'static AppState>,
-    jar: PrivateCookieJar,
-    mut request: Request,
-    next: Next,
-) -> Response {
-    // Check the Authorization header first. If a Bearer token is present we
-    // validate it and decide immediately — we don't fall through to the session
-    // check, so a bad/unknown token always gets a 401 (a DB error is treated the
-    // same way, never a fall-through to a session).
-    if let Some(bearer) = request
-        .headers()
-        .get(AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer "))
-    {
-        return match api_keys::authenticate(&state.db, bearer).await {
-            Ok(Some(role)) => {
-                // Service accounts have no human identity.
-                request.extensions_mut().insert(Principal {
-                    role,
-                    email: None,
-                    username: None,
-                });
-                next.run(request).await
-            }
-            _ => StatusCode::UNAUTHORIZED.into_response(),
-        };
-    }
-
-    match session_principal(&state, &jar).await {
-        Some(p) => {
-            request.extensions_mut().insert(p);
-            next.run(request).await
-        }
-        None => StatusCode::UNAUTHORIZED.into_response(),
-    }
 }
 
 /// Auth for the SvelteKit pages served by the static fallback. Session-cookie
@@ -147,18 +109,4 @@ pub async fn require_page_auth(
     } else {
         Redirect::to("/auth/login").into_response()
     }
-}
-
-/// Authorization for the `/api/admin` subtree. The `Principal` is already in the
-/// request extensions — `require_api_auth` is the outer `/api` layer and runs
-/// first — so this only has to check the role.
-pub async fn require_admin(
-    Extension(principal): Extension<Principal>,
-    request: Request,
-    next: Next,
-) -> Response {
-    if !principal.is_admin() {
-        return Error::Forbidden.into_response();
-    }
-    next.run(request).await
 }
