@@ -17,6 +17,7 @@ pub struct UserInfo {
     pub role: String,
 }
 
+/// Return the authenticated caller's profile (email, username, role).
 pub async fn get(Extension(principal): Extension<Principal>) -> Json<UserInfo> {
     Json(UserInfo {
         email: principal.email,

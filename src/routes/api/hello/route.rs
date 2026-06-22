@@ -14,6 +14,7 @@ pub struct HelloResponse {
     pub message: String,
 }
 
+/// Return a greeting, optionally personalised with the `name` query parameter.
 pub async fn get(Query(params): Query<HelloParams>) -> Json<HelloResponse> {
     let message = match params.name {
         Some(name) => format!("Hello, {name}!"),

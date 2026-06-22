@@ -8,8 +8,7 @@ use crate::AppState;
 use crate::auth::api_keys;
 use crate::error::Result;
 
-// Admin-only: the `/api/admin` `middleware.rs` rejects non-admins before the
-// request reaches this handler.
+/// Delete an API key by ID (admin only).
 pub async fn delete(State(state): State<&'static AppState>, Path(id): Path<Uuid>) -> Result<StatusCode> {
     api_keys::delete(&state.db, id).await?;
 

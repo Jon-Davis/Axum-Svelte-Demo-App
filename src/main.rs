@@ -44,7 +44,6 @@ use __folder_router__apirouter::{
     api::admin::api_keys::route::{CreateRequest, CreateResponse},
     api::hello::route::{HelloParams, HelloResponse},
     api::me::route::UserInfo,
-    auth::callback::route::CallbackParams,
 };
 
 #[folder_router("./src/routes", &'static AppState, openapi)]

@@ -24,12 +24,12 @@ pub struct CreateResponse {
     pub token: String,
 }
 
-// Admin-only: the `/api/admin` `middleware.rs` rejects non-admins before the
-// request reaches this handler.
+/// List all API keys (admin only).
 pub async fn get(State(state): State<&'static AppState>) -> Result<Json<Vec<api_keys::ApiKey>>> {
     Ok(Json(api_keys::list(&state.db).await?))
 }
 
+/// Create a new API key (admin only).
 pub async fn post(
     State(state): State<&'static AppState>,
     Json(body): Json<CreateRequest>,
