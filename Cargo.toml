@@ -11,7 +11,7 @@ tokio-console = ["dep:console-subscriber"]
 
 [dependencies]
 axum = "0.8"
-axum-folder-router = { path = "../axum-folder-router" }
+axum-folder-router = { path = "../axum-folder-router", features = ["openapi"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["fs", "trace", "set-header", "timeout", "limit", "compression-full", "request-id"] }
@@ -34,6 +34,11 @@ rand = "0.8"
 sha2 = "0.10"
 hex = "0.4"
 typeshare = "1"
+# OpenAPI: the `openapi` flag on the `folder_router` macro generates a
+# `utoipa::openapi::OpenApi` doc from the route tree. The macro emits code that
+# references *our* `utoipa`, so it must be a direct dep. `uuid`/`time` features
+# supply `ToSchema` impls for the `Uuid`/`OffsetDateTime` fields in our DTOs.
+utoipa = { version = "5", features = ["uuid", "time"] }
 
 [build-dependencies]
 svelte-rust = { path = "../svelte-rust" }

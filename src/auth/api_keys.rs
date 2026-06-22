@@ -21,7 +21,7 @@ use crate::error::{Error, Result};
 // out of the box — no client-side null→undefined normalisation needed.
 #[skip_serializing_none]
 #[typeshare]
-#[derive(Serialize, sqlx::FromRow)]
+#[derive(Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct ApiKey {
     pub id: Uuid,
     pub name: String,

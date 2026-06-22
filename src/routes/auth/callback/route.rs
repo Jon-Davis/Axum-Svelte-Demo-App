@@ -8,7 +8,10 @@ use crate::AppState;
 use crate::auth::{oidc, secure_cookie, sessions, users};
 use crate::error::{Error, Result};
 
-#[derive(serde::Deserialize)]
+// `Query<CallbackParams>` below: the folder_router `openapi` flag turns a
+// `Query<T>` parameter into query parameters via `utoipa::IntoParams`, so the
+// type must derive it (and be nameable at the `#[folder_router]` site).
+#[derive(serde::Deserialize, utoipa::IntoParams)]
 pub struct CallbackParams {
     // All optional: the provider may redirect back with an `error` (e.g. the user
     // declined consent) and no `code`/`state` at all. We handle that explicitly

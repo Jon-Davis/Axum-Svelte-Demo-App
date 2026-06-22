@@ -32,7 +32,22 @@ impl FromRef<&'static AppState> for Key {
     }
 }
 
-#[folder_router("./src/routes", &'static AppState)]
+// The `openapi` flag makes the macro emit `ApiRouter::openapi()` (a
+// `utoipa::openapi::OpenApi` built from the route tree) alongside the router. It
+// names each handler's schema/param type by the tokens written in the handler
+// signature, so every such type must be *nameable at this site*. Service-owned
+// DTOs come straight from their module; DTOs declared inside a `route.rs` live
+// under the router's generated module tree (`__folder_router__<struct>`), so we
+// pull them in from there.
+use auth::api_keys; // ApiKey, via `Vec<api_keys::ApiKey>` on GET /api/admin/api_keys
+use __folder_router__apirouter::{
+    api::admin::api_keys::route::{CreateRequest, CreateResponse},
+    api::hello::route::{HelloParams, HelloResponse},
+    api::me::route::UserInfo,
+    auth::callback::route::CallbackParams,
+};
+
+#[folder_router("./src/routes", &'static AppState, openapi)]
 struct ApiRouter();
 
 #[tokio::main]

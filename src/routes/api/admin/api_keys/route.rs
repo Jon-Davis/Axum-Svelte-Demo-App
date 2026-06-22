@@ -9,7 +9,7 @@ use crate::auth::api_keys;
 use crate::error::Result;
 
 #[typeshare]
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct CreateRequest {
     pub name: String,
     pub role: String,
@@ -17,7 +17,7 @@ pub struct CreateRequest {
 }
 
 #[typeshare]
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct CreateResponse {
     pub id: Uuid,
     pub name: String,
