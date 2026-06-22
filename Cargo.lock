@@ -210,6 +210,7 @@ dependencies = [
 [[package]]
 name = "axum-folder-router"
 version = "0.4.1"
+source = "git+https://github.com/Jon-Davis/axum-folder-router#d9d70e1ff9d136f3726a453cde32577d6accc03f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2986,6 +2987,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "svelte-rust"
 version = "0.1.0"
+source = "git+https://github.com/Jon-Davis/svelte-rust-glue#a10fc34db5be764dace8b7e2697d5bc838941672"
 
 [[package]]
 name = "svelte-rust-test"

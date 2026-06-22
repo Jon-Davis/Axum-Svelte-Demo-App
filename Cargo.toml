@@ -11,7 +11,7 @@ tokio-console = ["dep:console-subscriber"]
 
 [dependencies]
 axum = "0.8"
-axum-folder-router = { path = "../axum-folder-router", features = ["openapi"] }
+axum-folder-router = { git = "https://github.com/Jon-Davis/axum-folder-router", features = ["openapi"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["fs", "trace", "set-header", "timeout", "limit", "compression-full", "request-id", "normalize-path"] }
@@ -41,4 +41,4 @@ typeshare = "1"
 utoipa = { version = "5", features = ["uuid", "time"] }
 
 [build-dependencies]
-svelte-rust = { path = "../svelte-rust" }
+svelte-rust = { git = "https://github.com/Jon-Davis/svelte-rust-glue" }

@@ -132,36 +132,31 @@ Available at `/admin/` to users with `role = 'admin'`. Provides:
 
 ---
 
-## Route tree
+## OpenAPI / API docs
 
-```
-src/routes/
-├── +layout.js                    ← SvelteKit: prerender config
-├── +layout.svelte                ← SvelteKit: global auth guard (client-side)
-├── +page.svelte                  ← SvelteKit: home page
-├── hello/
-│   └── +page.svelte              ← SvelteKit: /hello page
-├── admin/
-│   └── +page.svelte              ← SvelteKit: admin panel UI
-├── auth/
-│   ├── login/route.rs            ← Axum: GET  /auth/login  (start OIDC flow)
-│   ├── callback/route.rs         ← Axum: GET  /auth/callback
-│   └── logout/route.rs           ← Axum: POST /auth/logout
-├── health/route.rs              ← Axum: GET /health  (liveness, public)
-├── ready/route.rs               ← Axum: GET /ready   (readiness, public)
-└── api/
-    ├── hello/route.rs            ← Axum: GET /api/hello
-    ├── me/route.rs               ← Axum: GET /api/me
-    └── admin/
-        └── api_keys/
-            ├── route.rs          ← Axum: GET + POST /api/admin/api_keys
-            └── [id]/
-                └── route.rs      ← Axum: DELETE /api/admin/api_keys/:id
-```
+The API is documented automatically from the route tree. No annotations on handlers are needed — paths, HTTP methods, path parameters, and doc comments come straight from the file structure. Schema shapes come from `#[derive(utoipa::ToSchema)]` on response types and `#[derive(utoipa::IntoParams)]` on query-parameter structs.
+
+| URL | Description |
+|---|---|
+| `GET /api/docs` | Swagger UI (requires login) |
+| `GET /api/docs/openapi.json` | Raw OpenAPI 3.1 spec (requires login) |
+
+The spec is generated once on first request (cached for the lifetime of the process) via `ApiRouter::openapi()`, emitted by the `openapi` flag on the `#[folder_router]` macro.
+
+### Adding a new endpoint to the spec
+
+1. Write the handler with a concrete return type — `-> Json<MyType>` rather than `-> impl IntoResponse`.
+2. Derive `ToSchema` on the response type and `IntoParams` on any query-parameter struct.
+3. Import those types at the `#[folder_router]` site in `main.rs` (the macro names them there when building the spec).
+4. Doc comments on the handler function become the operation summary and description.
+
+---
+
+## Route tree
 
 **SvelteKit** processes files whose names start with `+`. It ignores `route.rs`.
 
-**axum-folder-router** processes files named exactly `route.rs`. It ignores everything else. The directory path maps directly to the URL — `[param]` folders become `:param` path parameters.
+**axum-folder-router** processes files named exactly `route.rs`, plus `middleware.rs`, `fallback.rs`, and `intercept.rs`. It ignores everything else. The directory path maps directly to the URL — `[param]` folders become `:param` path parameters.
 
 ---
 
@@ -173,46 +168,11 @@ lives in service modules **outside** `src/routes/`, so it can be reused (the
 middleware and the admin handlers share the same API-key code) and read without
 the routing noise.
 
-```
-src/
-├── main.rs                 ← app wiring, startup (spawns the session reaper), `migrate` command
-├── config.rs              ← env → validated, fully-typed `Config` (URLs, secret, conversions)
-├── error.rs                ← `enum Error` + `Result` alias + one `IntoResponse` impl
-├── health.rs              ← liveness/readiness check helpers (DB ping)
-└── auth/
-    ├── mod.rs              ← Principal, secure_cookie(), require_login middleware
-    ├── sessions.rs         ← create / find / delete sessions + background reaper
-    ├── api_keys.rs         ← bearer authentication + admin list/create/delete
-    ├── users.rs            ← user upsert on login
-    └── oidc.rs             ← begin() login URL + complete() code exchange & verify
-```
-
-A handler like `GET /api/admin/api_keys` is then just an admin guard plus
-`api_keys::list(&state.db).await?`; the SQL, hashing, and token generation are in
-[`auth/api_keys.rs`](src/auth/api_keys.rs).
-
 ---
 
 ## Security middleware
 
-Every request passes through `require_login` before reaching a handler:
-
-```
-Request
-  │
-  ├── /auth/*, /_app/*, /health, /ready  →  pass through (public)
-  │
-  ├── Bearer token present?
-  │     ├── valid API key  →  attach Principal{role}, continue
-  │     └── invalid        →  401
-  │
-  └── session cookie present?
-        ├── valid session  →  attach Principal{role}, continue
-        ├── no session + /api/*  →  401
-        └── no session + page   →  redirect /auth/login
-```
-
-Handlers that need a role check extract `Extension<Principal>` and call `principal.is_admin()`. No handler re-reads the session or hits the `users` table — the role is resolved once in middleware.
+Auth is enforced by per-subtree `intercept.rs` files, not a single global middleware. Each intercept resolves the caller once and attaches a `Principal` extension; handlers read it without touching the database again.
 
 ---
 
@@ -272,8 +232,10 @@ Postgres-specific variables (`POSTGRES_USER`, `POSTGRES_PASSWORD`, etc.) are onl
 1. `build.rs` runs `typeshare` over `src/`, regenerating `src/lib/api/generated.ts` from the `#[typeshare]` DTOs. It only watches `#[typeshare]`-bearing `.rs` files, so editing other Rust files doesn't re-trigger this (or the frontend build).
 2. `build.rs` detects changes to `.svelte`, `.js`, `.ts`, `.css`, or `.html` files under `src/routes/`, plus `svelte.config.js`, `vite.config.js`, and `package.json`.
 3. If `node_modules/` is missing it runs `npm install` first.
-4. Runs `npm run build`, writing prerendered output to `build/`.
+4. Runs `npm run build`, writing prerendered output to `build/`. The SPA fallback (`fallback: 'index.html'` in `svelte.config.js`) generates `build/index.html` as a SPA entry point — unknown routes are handled client-side by `+error.svelte` rather than the server.
 5. Writes `.frontend-stamp` so Cargo skips the frontend build when nothing changed.
+
+The OpenAPI spec (`/api/docs/openapi.json`) is generated entirely at runtime from the route tree — no extra build step.
 
 ---
 
@@ -332,12 +294,15 @@ Set all environment variables (no `.env` file in production) and run the binary.
 | Crate | Role |
 |---|---|
 | `axum` | HTTP server and router |
-| `axum-folder-router` | Compile-time file-based API routing |
+| `axum-folder-router` | Compile-time file-based API routing (local fork); `openapi` feature generates spec |
 | `axum-extra` | `PrivateCookieJar` for encrypted session cookies |
-| `tower-http` | Static file serving, request tracing |
+| `tower-http` | Static file serving, tracing, path normalization, compression |
+| `tower_governor` | Rate limiting on `/auth` |
 | `tokio` | Async runtime |
 | `sqlx` | Async Postgres driver, embedded migrations |
 | `openidconnect` | OIDC client (PKCE, nonce, token verification) |
+| `utoipa` | OpenAPI schema generation (`ToSchema`, `IntoParams`) |
+| `typeshare` | Generate TypeScript types from Rust DTOs |
 | `sha2` / `hex` | API key hashing |
 | `rand` | Cryptographically random API key generation |
 | `serde` / `serde_json` | Serialization |
@@ -345,4 +310,4 @@ Set all environment variables (no `.env` file in production) and run the binary.
 | `tracing` / `tracing-subscriber` | Structured logging |
 | `console-subscriber` *(optional)* | tokio-console integration |
 | `@sveltejs/kit` | File-based page routing, SSG |
-| `@sveltejs/adapter-static` | Prerender all pages to static HTML |
+| `@sveltejs/adapter-static` | SPA fallback + prerender pages to static HTML |
