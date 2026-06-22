@@ -11,6 +11,7 @@ use tower::ServiceBuilder;
 use tower_http::{
     compression::CompressionLayer,
     limit::RequestBodyLimitLayer,
+    normalize_path::NormalizePathLayer,
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     set_header::SetResponseHeaderLayer,
     timeout::TimeoutLayer,
@@ -34,6 +35,10 @@ where
     // headers sit outside it so even a 408/413 response carries them.
     router.layer(
         ServiceBuilder::new()
+            // Strip trailing slashes before routing so `/api/docs/` matches
+            // `/api/docs`. Runs first (outermost) so no other layer ever sees
+            // the un-normalized path.
+            .layer(NormalizePathLayer::trim_trailing_slash())
             // Tag each request with an `x-request-id` (generated if absent) and
             // echo it back so logs and clients can correlate. Set before the
             // trace layer so spans capture the id.
