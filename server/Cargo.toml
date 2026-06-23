@@ -7,10 +7,6 @@ edition = "2024"
 name = "svelte-rust-test"
 path = "src/main.rs"
 
-[features]
-# Forwarded to the library so `--features tokio-console` still works end to end.
-tokio-console = ["svelte-rust-test/tokio-console"]
-
 [dependencies]
 svelte-rust-test = { path = ".." }
 tokio = { version = "1", features = ["full"] }

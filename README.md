@@ -30,7 +30,8 @@ One server process. Rust handles everything. The SvelteKit side is compiled to p
 ### 1. Start the database and identity provider
 
 ```powershell
-.\scripts\db-start.ps1
+podman machine start
+podman-compose up -d
 ```
 
 This starts two containers:
@@ -43,7 +44,8 @@ This starts two containers:
 Data persists in named Docker volumes (`pgdata`, `dexdata`) between restarts. To stop:
 
 ```powershell
-.\scripts\db-stop.ps1
+podman-compose down
+podman machine stop
 ```
 
 ### 2. Configure environment variables
@@ -264,9 +266,6 @@ Navigate to `http://localhost:5173` for HMR. Navigate to `http://localhost:3000`
 $env:RUST_LOG = "info,tower_http=debug"
 cargo run
 
-# tokio-console task inspector (port 6669)
-cargo run --features tokio-console
-tokio-console   # second terminal
 ```
 
 ---
@@ -307,6 +306,5 @@ Set all environment variables (no `.env` file in production) and run the binary.
 | `serde` / `serde_json` | Serialization |
 | `dotenvy` / `envy` | `.env` loading (debug only) and env → struct deserialization |
 | `tracing` / `tracing-subscriber` | Structured logging |
-| `console-subscriber` *(optional)* | tokio-console integration |
 | `@sveltejs/kit` | File-based page routing, SSG |
 | `@sveltejs/adapter-static` | SPA fallback + prerender pages to static HTML |
