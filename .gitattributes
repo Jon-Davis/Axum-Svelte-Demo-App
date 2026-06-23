@@ -1,0 +1,5 @@
+# Generated artifacts — committed but collapsed in GitHub diffs.
+# src/lib/api/gen/  : @hey-api/openapi-ts output (see openapi-ts.config.ts)
+# openapi.json      : dumped from the Rust route tree (cargo run -- dump-openapi)
+src/lib/api/gen/** linguist-generated=true
+openapi.json       linguist-generated=true

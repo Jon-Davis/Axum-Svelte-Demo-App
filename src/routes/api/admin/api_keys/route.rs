@@ -1,14 +1,12 @@
 use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use typeshare::typeshare;
 use uuid::Uuid;
 
 use crate::AppState;
 use crate::auth::api_keys;
 use crate::error::Result;
 
-#[typeshare]
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct CreateRequest {
     pub name: String,
@@ -16,7 +14,6 @@ pub struct CreateRequest {
     pub expires_at: Option<OffsetDateTime>,
 }
 
-#[typeshare]
 #[derive(Serialize, utoipa::ToSchema)]
 pub struct CreateResponse {
     pub id: Uuid,

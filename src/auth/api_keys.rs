@@ -7,20 +7,15 @@ use rand::RngCore;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
-use serde_with::skip_serializing_none;
 use time::OffsetDateTime;
-use typeshare::typeshare;
 use uuid::Uuid;
 
 use super::db;
 use crate::error::{Error, Result};
 
 /// A key as shown in the admin panel (never includes the secret).
-// `None` fields are omitted from the JSON entirely (rather than serialised as
-// `null`), so the wire matches typeshare's `field?: T` (optional/undefined) types
-// out of the box — no client-side null→undefined normalisation needed.
-#[skip_serializing_none]
-#[typeshare]
+// `Option` fields serialise as `null` (not omitted) and the OpenAPI schema types
+// them `field?: T | null` in the generated TS.
 #[derive(Serialize, sqlx::FromRow, utoipa::ToSchema)]
 pub struct ApiKey {
     pub id: Uuid,

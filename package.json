@@ -4,16 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "gen:types": "typeshare ./src --lang=typescript --config-file=typeshare.toml --output-file=src/lib/api/generated.ts",
-    "dev": "npm run gen:types && vite dev",
-    "build": "npm run gen:types && vite build",
+    "gen:api": "openapi-ts",
+    "dev": "npm run gen:api && vite dev",
+    "build": "vite build",
     "preview": "vite preview",
-    "check": "npm run gen:types && svelte-check --tsconfig ./tsconfig.json"
+    "check": "npm run gen:api && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "svelte": "^5.0.0"
   },
   "devDependencies": {
+    "@hey-api/openapi-ts": "^0.99.0",
     "@sveltejs/adapter-static": "^3.0.0",
     "@sveltejs/kit": "^2.0.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",

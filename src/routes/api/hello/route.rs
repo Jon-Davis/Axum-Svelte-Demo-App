@@ -1,6 +1,5 @@
 use axum::{Json, extract::Query};
 use serde::{Deserialize, Serialize};
-use typeshare::typeshare;
 
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct HelloParams {
@@ -8,7 +7,6 @@ pub struct HelloParams {
     pub name: Option<String>,
 }
 
-#[typeshare]
 #[derive(Serialize, utoipa::ToSchema)]
 pub struct HelloResponse {
     pub message: String,

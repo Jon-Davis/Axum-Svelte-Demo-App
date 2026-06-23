@@ -1,6 +1,0 @@
-# Map Rust scalar wrappers to the TS types they serialise to. `time`'s
-# OffsetDateTime serialises to an RFC3339 string and Uuid to its hyphenated
-# string form, so both are plain `string` on the TypeScript side.
-[typescript.type_mappings]
-Uuid = "string"
-OffsetDateTime = "string"

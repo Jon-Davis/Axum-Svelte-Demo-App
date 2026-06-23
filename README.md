@@ -24,9 +24,8 @@ One server process. Rust handles everything. The SvelteKit side is compiled to p
 - [Podman](https://podman.io/) with the WSL machine running
 - [podman-compose](https://github.com/containers/podman-compose)
 - Rust toolchain (`cargo`)
-- Node.js + npm
-- [`typeshare`](https://github.com/1Password/typeshare) CLI — `cargo install typeshare-cli`
-  (generates the TS API types from the Rust DTOs during the build)
+- Node.js + npm (the `openapi-typescript` devDependency generates the TS API
+  types from the OpenAPI spec; installed by `npm install`, no global tooling)
 
 ### 1. Start the database and identity provider
 
@@ -227,15 +226,16 @@ Postgres-specific variables (`POSTGRES_USER`, `POSTGRES_PASSWORD`, etc.) are onl
 
 ## Build pipeline
 
-`cargo build` compiles both halves:
+`cargo build` compiles **only the Rust binary** — it no longer invokes Node, so the Rust build graph carries no frontend dependency. The SvelteKit output dir (`build/`) is hardcoded in [fallback.rs](src/routes/fallback.rs) and served lazily at runtime by `ServeDir`, so the bundle needn't exist to compile.
 
-1. `build.rs` runs `typeshare` over `src/`, regenerating `src/lib/api/generated.ts` from the `#[typeshare]` DTOs. It only watches `#[typeshare]`-bearing `.rs` files, so editing other Rust files doesn't re-trigger this (or the frontend build).
-2. `build.rs` detects changes to `.svelte`, `.js`, `.ts`, `.css`, or `.html` files under `src/routes/`, plus `svelte.config.js`, `vite.config.js`, and `package.json`.
-3. If `node_modules/` is missing it runs `npm install` first.
-4. Runs `npm run build`, writing prerendered output to `build/`. The SPA fallback (`fallback: 'index.html'` in `svelte.config.js`) generates `build/index.html` as a SPA entry point — unknown routes are handled client-side by `+error.svelte` rather than the server.
-5. Writes `.frontend-stamp` so Cargo skips the frontend build when nothing changed.
+The cross-language pieces are built out-of-band by [`scripts/build.ps1`](scripts/build.ps1), in dependency order:
 
-The OpenAPI spec (`/api/docs/openapi.json`) is generated entirely at runtime from the route tree — no extra build step.
+1. **build rust** — `cargo build` (produces the binary).
+2. **build openapi** — `cargo run -- dump-openapi` writes `openapi.json` from the compiled route tree (no DB/config).
+3. **build typescript** — `npm run gen:types` runs `openapi-typescript` over `openapi.json` → `src/lib/api/openapi.d.ts`.
+4. **build svelte** — `npm run build` (Vite) writes the static bundle to `build/`. The SPA fallback (`fallback: 'index.html'` in `svelte.config.js`) generates `build/index.html`; unknown routes are handled client-side by `+error.svelte`.
+
+`openapi.json` and `openapi.d.ts` are committed (so the frontend type-checks with no Rust toolchain). The `openapi_golden` test (`cargo test`) is a drift guard: it fails if `openapi.json` no longer matches the route tree. The same spec is also served live at `/api/docs/openapi.json`.
 
 ---
 
@@ -301,8 +301,7 @@ Set all environment variables (no `.env` file in production) and run the binary.
 | `tokio` | Async runtime |
 | `sqlx` | Async Postgres driver, embedded migrations |
 | `openidconnect` | OIDC client (PKCE, nonce, token verification) |
-| `utoipa` | OpenAPI schema generation (`ToSchema`, `IntoParams`) |
-| `typeshare` | Generate TypeScript types from Rust DTOs |
+| `utoipa` | OpenAPI schema generation (`ToSchema`, `IntoParams`); source for the TS API types |
 | `sha2` / `hex` | API key hashing |
 | `rand` | Cryptographically random API key generation |
 | `serde` / `serde_json` | Serialization |

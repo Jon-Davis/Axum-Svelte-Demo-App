@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listApiKeys, createApiKey, deleteApiKey, ApiError } from '$lib/api/client';
-  import type { ApiKey } from '$lib/api/client';
+  import { getAdminApiKeys, postAdminApiKeys, deleteAdminApiKeysById } from '$lib/api/gen';
+  import type { ApiKey } from '$lib/api/gen';
 
   let keys = $state<ApiKey[]>([]);
   let loading = $state(true);
@@ -16,18 +16,20 @@
 
   onMount(loadKeys);
 
-  function describe(e: unknown): string {
-    return e instanceof Error ? e.message : String(e);
+  function describe(error: unknown): string {
+    return error ? JSON.stringify(error) : 'request failed';
   }
 
   async function loadKeys() {
     loading = true;
     actionError = null;
-    try {
-      keys = await listApiKeys();
-    } catch (e: unknown) {
-      if (e instanceof ApiError && e.status === 403) forbidden = true;
-      else actionError = `Failed to load keys: ${describe(e)}`;
+    const { data, error, response } = await getAdminApiKeys();
+    if (data) {
+      keys = data;
+    } else if (response.status === 403) {
+      forbidden = true;
+    } else {
+      actionError = `Failed to load keys: ${describe(error)}`;
     }
     loading = false;
   }
@@ -37,32 +39,33 @@
     if (!newName.trim()) return;
     creating = true;
     actionError = null;
-    try {
-      const data = await createApiKey({
+    const { data, error } = await postAdminApiKeys({
+      body: {
         name: newName.trim(),
         role: newRole,
         expires_at: newExpiry ? new Date(newExpiry).toISOString() : undefined,
-      });
+      },
+    });
+    if (data) {
       createdToken = data.token;
       newName = '';
       newRole = 'user';
       newExpiry = '';
       await loadKeys();
-    } catch (e: unknown) {
-      actionError = `Failed to create key: ${describe(e)}`;
-    } finally {
-      creating = false;
+    } else {
+      actionError = `Failed to create key: ${describe(error)}`;
     }
+    creating = false;
   }
 
   async function revokeKey(id: string, name: string) {
     if (!confirm(`Revoke key "${name}"? This cannot be undone.`)) return;
     actionError = null;
-    try {
-      await deleteApiKey(id);
+    const { error, response } = await deleteAdminApiKeysById({ path: { id } });
+    if (response.ok) {
       await loadKeys();
-    } catch (e: unknown) {
-      actionError = `Failed to revoke key: ${describe(e)}`;
+    } else {
+      actionError = `Failed to revoke key: ${describe(error)}`;
     }
   }
 

@@ -49,8 +49,44 @@ use __folder_router__apirouter::{
 #[folder_router("./src/routes", &'static AppState, openapi)]
 struct ApiRouter();
 
-#[tokio::main]
-async fn main() {
+/// SvelteKit static-adapter output directory, relative to the workspace root.
+/// Single source of truth: [`fallback`](routes::fallback) serves it at runtime,
+/// and `server`'s `build.rs` passes it to the `svelte-rust` glue (the lib has no
+/// build script of its own, so a `cargo:rustc-env` var couldn't reach this crate
+/// — a plain `const` is the cross-crate-safe way to share it).
+pub const BUILD_DIR: &str = "build";
+
+/// Build the OpenAPI document for the whole route tree. Shared by the
+/// `/api/docs/openapi.json` handler, the golden-file test (`openapi_golden`
+/// below), and `server`'s `build.rs` (which links this crate as a
+/// build-dependency to regenerate `openapi.json` at build time) so the served
+/// spec and the committed `openapi.json` can never drift.
+pub fn openapi_document() -> utoipa::openapi::OpenApi {
+    let mut doc = ApiRouter::openapi();
+    doc.info = utoipa::openapi::InfoBuilder::new()
+        .title("svelte-rust-test API")
+        .version(env!("CARGO_PKG_VERSION"))
+        .build();
+    doc
+}
+
+/// Process entry point, called by the `server` binary's `main`. Handles the
+/// `dump-openapi` and `migrate` subcommands, otherwise starts the HTTP server.
+pub async fn run() {
+    // `dump-openapi` writes the OpenAPI document to `openapi.json` and exits.
+    // The build pipeline regenerates the spec from the compiled route tree — no
+    // database or config required, so it must run before any of that setup. The
+    // `openapi_golden` test guards drift in CI. (The same document is also
+    // emitted at build time by `server/build.rs`.)
+    if std::env::args().nth(1).as_deref() == Some("dump-openapi") {
+        let json = openapi_document()
+            .to_pretty_json()
+            .expect("serialize OpenAPI document");
+        std::fs::write("openapi.json", format!("{json}\n")).expect("write openapi.json");
+        println!("wrote openapi.json");
+        return;
+    }
+
     // Load config before tracing so a `.env` `RUST_LOG` is in place when the
     // subscriber reads the environment.
     let config = Config::from_env().unwrap_or_else(|e| {
@@ -142,5 +178,29 @@ async fn shutdown_signal() {
     tokio::select! {
         _ = ctrl_c => tracing::info!("received Ctrl+C, shutting down"),
         _ = sigterm => tracing::info!("received SIGTERM, shutting down"),
+    }
+}
+
+#[cfg(test)]
+mod openapi_golden {
+    /// Drift guard for the committed OpenAPI spec.
+    ///
+    /// Compares the route tree's current spec against the committed
+    /// `openapi.json` (the source of truth the frontend's `openapi-ts` client
+    /// generation consumes) and fails if they differ — so a stale check-in can't pass
+    /// CI. Regeneration is a separate, deterministic step (`server/build.rs` at
+    /// build time, or `cargo run -p server -- dump-openapi` by hand). This test
+    /// only reads, so `cargo build`/`check` stay codegen-free.
+    #[test]
+    fn openapi_json_is_current() {
+        let generated = crate::openapi_document()
+            .to_pretty_json()
+            .expect("serialize OpenAPI document");
+
+        let current = std::fs::read_to_string("openapi.json").unwrap_or_default();
+        assert!(
+            current.trim_end() == generated.trim_end(),
+            "openapi.json is out of date — regenerate with `cargo run -p server -- dump-openapi` and commit."
+        );
     }
 }

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getMe, getHello } from '$lib/api/client';
-  import type { UserInfo, HelloResponse } from '$lib/api/client';
+  import { getMe, getHello } from '$lib/api/gen';
+  import type { UserInfo } from '$lib/api/gen';
 
   let count = $state(0);
   let apiMessage = $state('(not fetched)');
@@ -12,20 +12,15 @@
   const displayName = $derived(user ? (user.username || user.email || '?') : '?');
 
   async function fetchHello() {
-    try {
-      const data: HelloResponse = await getHello();
-      apiMessage = data.message;
-    } catch (e) {
-      apiMessage = `(error: ${e instanceof Error ? e.message : String(e)})`;
-    }
+    const { data, error } = await getHello();
+    apiMessage = data ? data.message : `(error: ${error ? JSON.stringify(error) : 'request failed'})`;
   }
 
   onMount(async () => {
-    try {
-      user = await getMe();
-    } catch {
-      // not logged in
-    }
+    // No session → 401; leave `user` null (the generated client returns the
+    // error in `error` rather than throwing).
+    const { data } = await getMe();
+    if (data) user = data;
   });
 </script>
 

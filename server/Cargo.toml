@@ -1,0 +1,24 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "svelte-rust-test"
+path = "src/main.rs"
+
+[features]
+# Forwarded to the library so `--features tokio-console` still works end to end.
+tokio-console = ["svelte-rust-test/tokio-console"]
+
+[dependencies]
+svelte-rust-test = { path = ".." }
+tokio = { version = "1", features = ["full"] }
+
+# `build.rs` links the library on the host to call `openapi_document()` at build
+# time — this is what lets a plain `cargo build` produce `openapi.json` (and then
+# the frontend) without a separate orchestration step. `svelte-rust` carries the
+# reusable npm/SvelteKit glue (install gating, content-hash gate, `npm run build`).
+[build-dependencies]
+svelte-rust-test = { path = ".." }
+svelte-rust = { path = "../../svelte-rust" }

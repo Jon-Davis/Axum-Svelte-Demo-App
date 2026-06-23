@@ -6,8 +6,8 @@
 use axum::{Router, middleware::from_fn_with_state};
 use tower_http::services::{ServeDir, ServeFile};
 
-use crate::AppState;
 use crate::auth::require_page_auth;
+use crate::{AppState, BUILD_DIR};
 
 pub fn fallback(
     router: Router<&'static AppState>,
@@ -16,7 +16,9 @@ pub fn fallback(
     // Wrapping the static service in its own Router keeps `require_page_auth`
     // scoped to the fallback (not layered over the whole tree) and normalises
     // the `ServeDir` body type so it's accepted as a `fallback_service`.
-    const BUILD_DIR: &str = env!("SVELTE_BUILD_DIR");
+    // SvelteKit static-adapter output dir (`crate::BUILD_DIR`), built by
+    // `server`'s `build.rs` and served lazily here — it needn't exist at compile
+    // time. Same constant the build script feeds to the `svelte-rust` glue.
     let static_files = Router::new()
         .fallback_service(
             ServeDir::new(BUILD_DIR)
