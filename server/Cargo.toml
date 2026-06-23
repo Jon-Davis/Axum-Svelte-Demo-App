@@ -21,4 +21,4 @@ tokio = { version = "1", features = ["full"] }
 # reusable npm/SvelteKit glue (install gating, content-hash gate, `npm run build`).
 [build-dependencies]
 svelte-rust-test = { path = ".." }
-svelte-rust = { path = "../../svelte-rust" }
+svelte-rust = { git = "https://github.com/Jon-Davis/svelte-rust-glue" }
